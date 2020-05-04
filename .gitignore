@@ -3,3 +3,4 @@ artwork/
 episodes/
 undercast.pickle
 .DS_Store
+.vscode

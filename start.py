@@ -1,6 +1,7 @@
 # Global imports
 from telegram.ext import Updater, PicklePersistence
 import logging
+import os
 
 # Local imports
 from handlers import handlers
@@ -27,10 +28,12 @@ def add_handlers_to_dp(dp, handlers, error_handler):
 
 
 def start():
+    port = os.environ.get('PORT')
     up, dp = initialise(BOT_TOKEN, "undercast.pickle")
     add_handlers_to_dp(dp, handlers, error_handler)
 
-    up.start_polling()
+    up.start_webhook(listen="0.0.0.0", port=int(port), url_path=BOT_TOKEN)
+    up.bot.setWebhook(f"https://undercast-bot.herokuapp.com/{BOT_TOKEN}")
     up.idle()
 
 
