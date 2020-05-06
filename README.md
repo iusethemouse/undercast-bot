@@ -11,6 +11,23 @@ A minimalist bot that makes it easy to:
 - Subscriptions
 - Notifications
 
+## How to run locally
+Make sure you have a bot token from [@BotFather](https://t.me/BotFather), and Telegram API from [my.telegram.org](https://my.telegram.org/). See [here](https://docs.madelineproto.xyz/docs/LOGIN.html#getting-permission-to-use-the-telegram-api) for help with Telegram API.
+
+Specify the above in `start_bot_local.py` and `start_file_uploader.php`.
+
+[Download](https://getcomposer.org/doc/00-intro.md#locally) `composer.phar` in the bot directory, then run:
+```bash
+$ php composer.phar install
+$ pip install -r requirements.txt
+$ python start_bot_local.py
+```
+This will start the primary bot process. In a new `shell` instance, run:
+```bash
+$ php episode_uploader/start_file_uploader.php
+```
+This will start the secondary process for acquiring episode file IDs. Upon request, specify that you want to login as a bot, and specify your bot token. After the initial launch, a `.session` file will be generated with the entered parameters, and consequent launches won't require any additional input.
+
 
 # Changelog
 __v0.2__ - Added cloud-hosting functionality via webhooks. Implemented a workaround for Bot API's file size restriction using [MadelineProto](https://github.com/danog/MadelineProto). A secondary process now taps into Telegram API to upload files and provides their file ID to the primary process.
