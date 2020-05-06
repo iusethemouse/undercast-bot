@@ -1,3 +1,15 @@
+"""Logic for the search routine.
+
+The routine is initiated with the /search command. After that,
+all communication between functions is through callback queries
+from inline buttons.
+
+/search term -> search result list -> selected podcast <-> episode list <-> selected episode
+
+TODO: generalise some of the functions to work with other routines (i.e. subscriptions)
+
+"""
+
 # Global imports
 import re
 import os
@@ -8,6 +20,13 @@ import modules.inline_keyboards as inline_keyboards
 from modules.action_wrappers import send_typing_action
 
 def search(update, context):
+    """
+    Initiates the routine.
+
+    User is sent a message with an inline button for each podcast in
+    the search result.
+    """
+
     if len(context.args) == 0:
         msg_header, msg_body = 'Usage: /search search-term', []
     else:
@@ -24,14 +43,27 @@ def search(update, context):
     update.message.reply_text(msg_header,
                               reply_markup=inline_keyboards.search_results_keyboard(msg_body))
 
+
 @send_typing_action
 def s_pod_button(update, context):
+    """
+    s_pod_button: Search Podcast Button
+
+    Sends the user an image message with the selected podcast information
+    as image caption, parsed as HTML.
+
+    Inline buttons include "Subscribe" and "Episodes"
+
+    """
+
     bot = context.bot
     query = update.callback_query
     query.answer()
     idx = int(re.search(r'[0-9]', query.data).group(0))
     
     pod = context.chat_data['pod_list'][idx]
+
+    # Check for file ID for podcast artwork image
     if pod.collection_id in context.bot_data['podcasts']:
         pod = context.bot_data['podcasts'][pod.collection_id]
         img_f_id = pod.image_file_id
@@ -39,6 +71,7 @@ def s_pod_button(update, context):
         img_path = pod.get_image_path()
         pod.get_eps_and_subs()
     
+    # Loads podcast subtitle and processes all episodes
     msg = pod.is_chosen()
     
     m = bot.send_photo(chat_id=update.effective_chat.id,
@@ -56,6 +89,14 @@ def s_pod_button(update, context):
 
 
 def s_pod_eps_button(update, context):
+    """
+    s_pod_eps_button: Search Podcast Episodes Button
+
+    Activated when user selects to view episodes of selected
+    podcast. Selected podcast message is edited to have the paginated
+    list of episodes as inline buttons.
+    """
+
     query = update.callback_query
     query.answer()
     
@@ -73,6 +114,16 @@ def s_pod_eps_button(update, context):
     
     
 def s_eps_to_pod_button(update, context):
+    """
+    s_eps_to_pod_button: Search Episodes to Podcast Button
+
+    Activated when the user chooses to return to the selected podcast
+    view from the episode list view.
+
+    The podcast message is edited to have the "Subscribe" and "Episodes" inline
+    buttons.
+    """
+
     query = update.callback_query
     query.answer()
     
@@ -80,6 +131,14 @@ def s_eps_to_pod_button(update, context):
     
     
 def s_p_e_next_button(update, context):
+    """
+    s_p_e_next_button: Search Podcast Episode Next Button
+
+    Activated when the user wants to go to the next page of the
+    episode list for selected podcast. The page number of the
+    episode list keyboard is incremented and the keyboard is regenerated.
+    """
+
     query = update.callback_query
     query.answer()
     
@@ -92,6 +151,14 @@ def s_p_e_next_button(update, context):
     
 
 def s_p_e_prev_button(update, context):
+    """
+    s_p_e_prev_button: Search Podcast Episode Previous Button
+
+    Activated when the user wants to go to the previous page of the
+    episode list for selected podcast. The page number of the
+    episode list keyboard is decremented and the keyboard is regenerated.
+    """
+
     query = update.callback_query
     query.answer()
     
@@ -104,6 +171,17 @@ def s_p_e_prev_button(update, context):
 
     
 def s_pod_eps_ep_button(update, context):
+    """
+    s_pod_eps_ep_button: Search Podcast Episodes Episode Button
+
+    Activated when an episode is selected from the episode list for
+    selected podcast. The podcast message is edited to have a new
+    set of inline buttons: "Download", "Back to episode list", and,
+    optionally, "View show notes" if episode has them.
+
+    TODO: Certain show notes have a parsing problem with <img> and <br> tags.
+    """
+
     query = update.callback_query
     query.answer()
     
@@ -119,7 +197,17 @@ def s_pod_eps_ep_button(update, context):
                               parse_mode='html',
                               reply_markup=k)
     
+
 def s_p_e_subt_button(update, context):
+    """
+    s_p_e_subt_button: Search Podcast Episode Subtitle Button
+
+    Activated when the "View show notes" button is actioned.
+    Sends a new message with full show notes parsed as HTML, as text messages
+    have no character limit as opposed to image caption (which the podcast message
+    utilises for displaying podcast and episode descriptions).
+    """
+
     bot = context.bot
     query = update.callback_query
     query.answer()
@@ -136,6 +224,13 @@ def s_p_e_subt_button(update, context):
     
 
 def s_p_e_hide_sub_button(update, context):
+    """
+    s_p_e_hide_sub_button: Search Podcast Episode Hide Subtitle Button
+
+    Activated when the user chooses to hide the show notes message.
+    The message is deleted.
+    """
+
     bot = context.bot
     query = update.callback_query
     query.answer()
@@ -145,7 +240,13 @@ def s_p_e_hide_sub_button(update, context):
     
 
 def s_p_e_e_to_e_button(update, context):
-    # return from search episode view to eps list
+    """
+    s_p_e_e_to_e_button: Search Podcast Episodes Episode to Episodes Button
+
+    Activated when the user wants to return from the selected episode back to
+    the list of episodes. The page number is conserved.
+    """
+
     query = update.callback_query
     query.answer()
     
@@ -159,6 +260,24 @@ def s_p_e_e_to_e_button(update, context):
     
 
 def s_e_download_button(update, context):
+    """
+    s_e_download_button: Search Episode Download Button
+
+    Activated when the user wants to download the selected episode.
+
+    The file ID is sent if the episode has already been downloaded before by
+    any user, alternatively a request is sent to the secondary process, which uploads
+    the episode to Telegram's servers and returns its file ID to the primary process.
+
+    A message is then sent with the audio file (title: episode title, artist: podcast name)
+    with a short display message for context. The message is then shareable, the audio file
+    is downloadable.
+
+    TODO: Improve feedback to the user indicating what stage (downloading/uploading) the
+    process is currently at. Implement the process in an async way to remove the blocking
+    nature of the current implementation.
+    """
+
     bot = context.bot
     query = update.callback_query
     query.answer()

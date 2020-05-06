@@ -1,3 +1,12 @@
+"""Wrapper functions for Telegram actions
+
+When wrapped around a Handler function, these will send a Telegram
+action to the user to indicate that the bot is performing an action
+in the background. It is recommended to only use these if the delay
+between user action and bot action is noticeable.
+
+"""
+
 # Global imports
 import telegram
 from functools import wraps

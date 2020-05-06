@@ -1,3 +1,13 @@
+"""Handlers for all routines defined in _logic.py files.
+
+Patterns for CallbackQueryHandler objects are regex expressions to filter out
+queries meant for those handlers.
+
+The list of all handlers is imported and added to the dispatcher when starting
+the bot.
+
+"""
+
 # Global imports
 from telegram.ext import (CommandHandler, 
                           MessageHandler, 
