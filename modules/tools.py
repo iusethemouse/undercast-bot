@@ -9,16 +9,17 @@ from datetime import datetime, timedelta
 from math import fabs
 import urllib.request
 import shutil
-from pydub import AudioSegment
+#from pydub import AudioSegment
+import time
 
 # Local modules
-from entities import Pod, Episode
+from modules.entities import Pod, Episode
 
 # Globals
 IMG_ROOT = Path('artwork/')
 EP_ROOT = Path('episodes/')
+PHP_ROOT = Path('episode_uploader/episodes_to_send/')
 MAX_SEARCH_RESULTS = 6
-MAX_FILE_SIZE = 48000000 # in bytes
 
 
 def get_search_json(search_term):
@@ -195,47 +196,67 @@ def create_file_index_list(max_size, f_len):
     return res_list
 
 
-def download_ep(link, title):
+def download_ep(link, title, podcast, thumb_id):
+    # Download episode episode.mp3;
+    # Start looking for episode.txt, which will contain the file_id from MadelineProto;
+    # Return the episode file_id.
     root = EP_ROOT
-    max_size = MAX_FILE_SIZE
+    to_php = PHP_ROOT
     name = re.sub(r"\W", '_', title)
     ext = name + '.mp3'
-    
+    ext_txt = name + '.txt'
+    ext_data = name + '_data.txt'
+
     if not root.exists():
         os.makedirs(root)
-        
-    if not (root/ext).exists():
+    if not to_php.exists():
+        os.makedirs(to_php)
+
+    with open(to_php/ext_data, "w") as f:
+        data = f"{title}::{podcast}::{thumb_id}"
+        f.write(data)
+
+    # Download episode.mp3 if episode.txt isn't already there
+    if not (to_php/ext_txt).exists():
         with urllib.request.urlopen(link) as response, open(root/ext, 'wb') as f:
-            shutil.copyfileobj(response, f)
-    
-    f_size = os.path.getsize(root/ext)
-    paths = [root/ext]
-    if f_size > max_size:
-        ratio = f_size / max_size
-        paths = split_audio_file(ratio, root, name)
-        os.remove(root/ext)
-    
-    return paths
+                shutil.copyfileobj(response, f)
+        os.rename(root/ext, to_php/ext)
+
+        # Start looking for episode.txt
+        found_response = False
+        while not found_response:
+            if (to_php/ext_txt).exists():
+                found_response = True
+                with open(to_php/ext_txt, "r") as f:
+                    ep_file_id = f.readline()
+                os.remove(to_php/ext_txt)
+            time.sleep(0.2)
+    else:
+        with open(to_php/ext_txt, "r") as f:
+            ep_file_id = f.readline().rstrip()
+        os.remove(to_php/ext_txt)
+
+    return ep_file_id
 
 
-def split_audio_file(ratio, root, name):
-    # returns a list of paths for file parts
-    parts = []
-    ep = AudioSegment.from_mp3(root/(name+'.mp3'))
-    ep_size = len(ep)
-    max_size = int(ep_size / ratio)
-    idx_list = create_file_index_list(max_size, ep_size)
+# def split_audio_file(ratio, root, name):
+#     # returns a list of paths for file parts
+#     parts = []
+#     ep = AudioSegment.from_mp3(root/(name+'.mp3'))
+#     ep_size = len(ep)
+#     max_size = int(ep_size / ratio)
+#     idx_list = create_file_index_list(max_size, ep_size)
     
-    start = 0
-    for i in range(len(idx_list)):
-        end = idx_list[i]
-        ep_part = ep[start:end]
-        part_path = root/(name + f"_Part_{i+1}.mp3")
-        ep_part.export(part_path, format='mp3')
-        parts.append(part_path)
-        start = end
+#     start = 0
+#     for i in range(len(idx_list)):
+#         end = idx_list[i]
+#         ep_part = ep[start:end]
+#         part_path = root/(name + f"_Part_{i+1}.mp3")
+#         ep_part.export(part_path, format='mp3')
+#         parts.append(part_path)
+#         start = end
     
-    return parts
+#     return parts
 
 
 def truncate(s):

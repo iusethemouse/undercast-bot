@@ -5,8 +5,8 @@ from telegram.ext import (CommandHandler,
                           Filters)
 
 # Local imports
-import search_logic
-import generic_logic
+import modules.search_logic as search_logic
+import modules.generic_logic as generic_logic
 
 
 # Search handlers

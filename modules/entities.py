@@ -1,4 +1,4 @@
-import tools
+import modules.tools as tools
 
 
 class Pod:
@@ -67,7 +67,7 @@ class Episode:
         self.hash = tools.hash_ep_title(self.title)
         self.shownotes = ''
         self.too_long = False
-        self.file_ids = False
+        self.file_id = None
         
     def __repr__(self):
         txt = ''
@@ -92,7 +92,8 @@ class Episode:
         msg = f"<b>{self.title}</b>\n{self.duration}, {self.published_str}\n\n{description_tr}\n\n"
         return msg
     
-    def get_file_paths(self):
+    def get_file_id(self, podcast, thumb_id):
         # returns a list of paths.
         # contains a single path if file size okay, else part paths
-        return tools.download_ep(self.link, self.title)
+        self.file_id = tools.download_ep(self.link, self.title, podcast, thumb_id)
+        return self.file_id

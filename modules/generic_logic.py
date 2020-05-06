@@ -13,18 +13,12 @@ def start(update, context):
     context.bot.send_message(chat_id=update.effective_chat.id,
                              text="""
 This is <b>Undercast</b>.
-- Search and subscribe to podcasts
-- Download and share episodes
-- Get notified of new releases
+
+- Search for podcasts using any related term: podcast name, artist, topic, genre.
+- Download and listen to episodes.
+- Share favourite podcasts and episodes with anyone.
 
 To get started, type a search term after the /search command.
-
-Type /help to learn more.
-
-
-<u>Note:</u>
-The subscriptions feature is in development.
-Large episodes are currently split into parts due to Telegram's file size restrictions.
 """, parse_mode='html')
 
 

@@ -4,12 +4,13 @@ import logging
 import os
 
 # Local imports
-from handlers import handlers
-from generic_logic import error as error_handler
-from entities import Pod, Episode
+from modules.handlers import handlers
+from modules.generic_logic import error as error_handler
+from modules.entities import Pod, Episode
 
 # Globals
 BOT_TOKEN = "your bot token"
+HEROKU_APP = "your heroku app name"
 
 
 def initialise(bot_token, persistence_pickle):
@@ -33,7 +34,7 @@ def start():
     add_handlers_to_dp(dp, handlers, error_handler)
 
     up.start_webhook(listen="0.0.0.0", port=int(port), url_path=BOT_TOKEN)
-    up.bot.setWebhook(f"https://undercast-bot.herokuapp.com/{BOT_TOKEN}")
+    up.bot.setWebhook(f"https://{HEROKU_APP}.herokuapp.com/{BOT_TOKEN}")
     up.idle()
 
 

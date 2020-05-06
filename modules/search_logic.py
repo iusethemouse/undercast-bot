@@ -3,9 +3,9 @@ import re
 import os
 
 # Local imports
-import tools
-import inline_keyboards
-from action_wrappers import send_typing_action
+import modules.tools as tools
+import modules.inline_keyboards as inline_keyboards
+from modules.action_wrappers import send_typing_action
 
 def search(update, context):
     if len(context.args) == 0:
@@ -170,16 +170,13 @@ def s_e_download_button(update, context):
     ep_idx = int(re.search(r'[0-9]+', query.data).group(0))
     pod = context.chat_data['s_p']
     ep = pod.episodes[ep_idx]
-    parts = 0
-    f_id_mode = True
+    
     if ep.hash in context.bot_data['episodes']:
         ep = context.bot_data['episodes'][ep.hash]
-        file_ids = ep.file_ids
-        parts = len(file_ids)
+        file_id = ep.file_id
     else:
-        file_paths = ep.get_file_paths()
-        parts = len(file_paths)
-        f_id_mode = False
+        file_id = ep.get_file_id(pod.title, pod.image_file_id)
+        context.bot_data['episodes'][ep.hash] = ep
         
     bot.edit_message_text(chat_id=update.effective_chat.id,
                       message_id=note_msg.message_id,
@@ -187,42 +184,14 @@ def s_e_download_button(update, context):
                       parse_mode='html')
     
     msg = f"<b>{pod.title}</b>\n<i>{pod.artist}</i>\n~\n<b>{ep.title}</b>\n{ep.duration} <b>·</b> {ep.published_str}\n\nvia @undercast_bot"
-
-    messages = []
-    
-    if parts == 1:
-        m = bot.send_audio(chat_id=update.effective_chat.id,
-                       audio=open(file_paths[0], 'rb') if not f_id_mode else file_ids[0],
-                       performer=pod.title,
-                       title=ep.title,
-                       thumb=pod.image_file_id,
-                       caption=msg,
-                       parse_mode='html',
-                       timeout=120)
-        messages.append(m)
-    else:
-        file_items = file_paths if not f_id_mode else file_ids
-        for i, file in enumerate(file_items):
-            part_msg = f"Part {i+1} of {len(file_items)}\n<b>{pod.title}</b>\n<i>{pod.artist}</i>\n~\n<b>{ep.title}</b>\n" \
-                        f"{ep.duration} <b>·</b> {ep.published_str}\n\nvia @undercast_bot"
-            
-            m = bot.send_audio(chat_id=update.effective_chat.id,
-                       audio=open(file, 'rb') if not f_id_mode else file,
-                       performer=pod.title,
-                       title=f"Pt. {i+1}, "+ep.title,
-                       thumb=pod.image_file_id,
-                       caption=part_msg,
-                       parse_mode='html',
-                          timeout=120)
-            messages.append(m)
+    bot.send_audio(chat_id=update.effective_chat.id,
+                    audio=file_id,
+                    performer=pod.title,
+                    title=ep.title,
+                    thumb=pod.image_file_id,
+                    caption=msg,
+                    parse_mode='html',
+                    timeout=120)
             
     bot.delete_message(chat_id=update.effective_chat.id,
                        message_id=note_msg.message_id)
-    
-    if not f_id_mode:
-        ids = [mes.audio.file_id for mes in messages]
-        ep.file_ids = ids
-        context.bot_data['episodes'][ep.hash] = ep
-        
-        for p in file_paths:
-            os.remove(p)

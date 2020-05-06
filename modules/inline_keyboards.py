@@ -2,7 +2,7 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 # Local imports
-from tools import create_ep_index_list
+from modules.tools import create_ep_index_list
 
 
 def search_results_keyboard(msg_list):
