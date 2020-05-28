@@ -6,8 +6,8 @@ if (!file_exists('madeline.php')) {
 include 'madeline.php';
 
 
-$settings['app_info']['api_id'] = "your Telegram API ID";
-$settings['app_info']['api_hash'] = "your Telegram API hash";
+$settings['app_info']['api_id'] = "your_Telegram_API_ID";
+$settings['app_info']['api_hash'] = "your_Telegram_API_hash";
 
 $MadelineProto = new \danog\MadelineProto\API('session.madeline', $settings);
 $MadelineProto->start();

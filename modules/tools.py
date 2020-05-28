@@ -1,30 +1,36 @@
-# General modules
+"""
+tools.py
+
+Helper functions for various operations and computations required by bot routies.
+"""
+
 import requests
 import re
 import feedparser
 from pathlib import Path
 import os
-from hashlib import sha1
+from hashlib import md5
 from datetime import datetime, timedelta
 from math import fabs
 import urllib.request
 import shutil
-#from pydub import AudioSegment
 import time
 
 # Local modules
-from modules.entities import Pod, Episode
+from .entities import Pod, Episode
 
 # Globals
 IMG_ROOT = Path('artwork/')
 EP_ROOT = Path('episodes/')
-PHP_ROOT = Path('episode_uploader/episodes_to_send/')
-MAX_SEARCH_RESULTS = 6
+MAX_SEARCH_RESULTS = 8
 
 
-def get_search_json(search_term):
-    # IN: search string with '+'s instead of spaces
-    # OUT: iTunes response in a json-like dict;
+def get_search_json(search_term: str):
+    """
+    Returns an iTunes json containing search results.
+
+    json = {resultCount: int, results: [podcasts]}
+    """
     max_results = str(MAX_SEARCH_RESULTS)
     itunes_url = "https://itunes.apple.com/search?&media=podcast&limit="+max_results+"&term="
     search_url = itunes_url + search_term
@@ -33,45 +39,24 @@ def get_search_json(search_term):
     return json_result
 
 
-def json_to_msg_keys_pod_list(json_result):
-    n = json_result['resultCount']
-    if n == 0:
-        msg = "Couldn't find anything. Try another search term."
-        keys, pod_list = [], []
-    else:
-        pod_list = json_to_pod_list(json_result)
-        msg = pod_list_to_msg_list(pod_list)
-        keys = pod_list_to_keys(pod_list)
-
-    return msg, keys, pod_list
-
-
-def json_to_pod_list(json):
-    # generate a list of Pod objects from search result json
-    pod_list = []
-    for pod in json['results']:
-        pod = Pod(pod)
+def json_to_pods(results: list):
+    """
+    Converts a list of dicts into a list of Pod objects.
+    """
+    pods = []
+    for entry in results:
+        pod = Pod(entry)
         if pod.valid:
-            pod_list.append(pod)
-    
-    return pod_list
+            pods.append(pod)
+
+    return pods
 
 
-def pod_list_to_keys(pod_list):
-    return [i+1 for i in range(len(pod_list))]
-
-
-def pod_list_to_msg_list(pod_list):
-    # pods are Pod objects
-    msg_list = [f"Found {len(pod_list)} result(s):"]
-    for pod in pod_list:
-        msg_list.append(pod.to_msg_list())
-    
-    return msg_list
-
-
-def date_to_txt(date_str):
-    # Provide date estimates for latest episodes
+def prettify_latest_release_date(date_str):
+    """
+    Converts an iTunes-formatted date into a short note about when the last episode
+    was released.
+    """
     date = datetime.strptime(date_str, "%Y-%m-%dT%H:%M:%SZ")
     date_diff = datetime.now() - date
     day_diff = int(fabs(date_diff.days))
@@ -88,10 +73,13 @@ def date_to_txt(date_str):
     return txt
 
 
-def get_pod_image_path(img_url, col_id):
-    # Used by .get_image_path method of Pod class
-    # see global variable IMG_ROOT to specify destination for images
-    ext = col_id + '.jpeg'
+def download_artwork(img_url, pod_id):
+    """
+    Downloads the artwork for specified podcast and returns its path.
+
+    The artwork file is then deleted by parent process to save space, while its fileID is stored.
+    """
+    ext = pod_id + '.jpg'
     root = IMG_ROOT
     
     if not root.exists():
@@ -104,68 +92,87 @@ def get_pod_image_path(img_url, col_id):
     return root/ext
 
 
-def get_pod_subtitle_from_feed(feed_url):
-    # Used to retrieve subtitle for a Pod object
-    feed = feedparser.parse(feed_url)
+def parse_feed(feed_url):
+    """
+    Parses RSS feed. Returns a tuple of podcast information as a dict and a list of episode dicts.
+    """
+    feed_root = feedparser.parse(feed_url)
+
+    return feed_root['feed'], feed_root['entries']
+
+
+def pod_subtitle_from_feed(feed):
+    """
+    Gets a podcast subtitle. It is preferable to use the 'subtitle' field if it exists.
+    In some cases it exists but is set to the empty string, in which case 'summary' also works.
+    """
     try:
-        text = feed['feed']['summary']
-        if len(feed['feed']['subtitle']) != 0:
-            text = feed['feed']['subtitle']
+        text = feed['subtitle'] if feed['subtitle'] != '' else feed['summary']
     except KeyError:
-        text = feed['feed']['subtitle']
+        text = feed['subtitle']
         
     return clean_html(text)
 
 
-def get_ep_sub_sum(ep_info):
-    s = ['',''] # sub and sum
-    if 'subtitle' in ep_info:
-        s[0] = ep_info['subtitle']
-        
-    s[1] = ep_info['summary']
-        
-    for i in range(2):
-        s[i] = clean_html(s[i])
-        
-    return s[0], s[1]
+def get_episode_subtitle_and_summary(ep_info):
+    """
+    Episode subtitle and summary are used to determine if an episode has show notes.
+
+    Because of the inconsistencies among different podcasts' feeds, certain cases will
+    have the 'subtitle' field, and others won't. In that case 'summary' becomes the only
+    episode description available, which also later gets split if longer than 1000 characters.
+    """
+    try:
+        subtitle = clean_html(ep_info["subtitle"])
+    except KeyError:
+        subtitle = ""
+    summary = clean_html(ep_info["summary"])
+
+    return subtitle, summary
 
 
 def get_ep_duration(ep):
-    # returns duration as string of either formats:
-    # Xh Ym or Zm
-    s = '-'
+    """
+    Due to inconsistencies in RSS feeds, some episodes don't have the duration listed, in which
+    case this returns '-'.
+
+    There are two ways that duration gets represented in feeds: hh:mm:ss, or the number of seconds.
+    This gets rid of trailing zeros to conserve space, as the duration is displayed in the episode list view.
+
+    The returned string is of format 1h 20m
+    """
+    res = '-'
     if 'itunes_duration' in ep:
         dur = ep['itunes_duration']
         if ':' not in dur:
             dur = str(timedelta(seconds=int(dur)))
-        t = re.sub(r'^0{1,2}:*|(?<=:)0', '', dur[:-3])
-        s = re.sub(r':', 'h ', t) + 'm'
+        dur_stripped = re.sub(r'^0{1,2}:*|(?<=:)0', '', dur[:-3])
+        res = re.sub(r':', 'h ', dur_stripped) + 'm'
     
-    return s
+    return res
 
 
 def get_ep_source_link(link_list):
+    """
+    Looks for a link that contains the '.mp3' extension.
+    """
     for link_dict in link_list:
         if '.mp3' in link_dict['href']:
             return link_dict['href']
-    
-
-def get_ep_list_from_feed(feed_url):
-    feed = process_pod_feed(feed_url)
-    eps = feed['entries']
-    
-    return [Episode(ep) for ep in eps]
 
 
-def process_pod_feed(feed_url):
-    return feedparser.parse(feed_url)
-
-
-def hash_ep_title(t):
-    return sha1(t.encode('UTF-8')).hexdigest()
+def hash_string(s):
+    """
+    Returns a truncated MD5 hash of a string.
+    """
+    return md5(s.encode('UTF-8')).hexdigest()[:10]
 
 
 def process_ep_date(date_str):
+    """
+    Parses episode's release date. There are two most commong date formats in RSS feeds
+    that this accounts for.
+    """
     try:
         res = datetime.strptime(date_str,"%a, %d %b %Y %H:%M:%S %z")
     except ValueError:
@@ -174,34 +181,27 @@ def process_ep_date(date_str):
     return res
 
 
-def create_ep_index_list(res_size, n_eps):
-    n_chunks = n_eps // res_size
-    res_list = [res_size * i for i in range(1, n_chunks + 1)]
-    remainder = n_eps - res_size * n_chunks
+def create_paginated_list(res_per_page, n_items):
+    """
+    Creates a list of pages that contain indices of items to list.
+    """
+    n_chunks = n_items // res_per_page
+    res_list = [res_per_page * i for i in range(1, n_chunks + 1)]
+    remainder = n_items - res_per_page * n_chunks
     
     if remainder != 0:
-        res_list.append(n_eps)
+        res_list.append(n_items)
         
     return res_list
 
 
-def create_file_index_list(max_size, f_len):
-    n_chunks = f_len // max_size
-    res_list = [max_size * i for i in range(1, n_chunks + 1)]
-    remainder = f_len - max_size * n_chunks
-    
-    if remainder != 0:
-        res_list.append(f_len)
-        
-    return res_list
-
-
-def download_ep(link, title, podcast, thumb_id):
-    # Download episode episode.mp3;
-    # Start looking for episode.txt, which will contain the file_id from MadelineProto;
-    # Return the episode file_id.
+def download_ep(link, title, pod_title, thumb_id):
+    """
+    Downloads the audio file, then waits for start_file_uploader.php to upload the file
+    and provide its Telegram fileID. The fileID is returned.
+    """ 
     root = EP_ROOT
-    to_php = PHP_ROOT
+    to_php = Path("episode_uploader/episodes_to_send/")
     name = re.sub(r"\W", '_', title)
     ext = name + '.mp3'
     ext_txt = name + '.txt'
@@ -213,8 +213,11 @@ def download_ep(link, title, podcast, thumb_id):
         os.makedirs(to_php)
 
     with open(to_php/ext_data, "w") as f:
-        data = f"{title}::{podcast}::{thumb_id}"
+        data = f"{title}::{pod_title}::{thumb_id}"
         f.write(data)
+
+    if not root.exists():
+        os.makedirs(root)
 
     # Download episode.mp3 if episode.txt isn't already there
     if not (to_php/ext_txt).exists():
@@ -231,6 +234,7 @@ def download_ep(link, title, podcast, thumb_id):
                     ep_file_id = f.readline()
                 os.remove(to_php/ext_txt)
             time.sleep(0.2)
+            
     else:
         with open(to_php/ext_txt, "r") as f:
             ep_file_id = f.readline().rstrip()
@@ -239,27 +243,15 @@ def download_ep(link, title, podcast, thumb_id):
     return ep_file_id
 
 
-# def split_audio_file(ratio, root, name):
-#     # returns a list of paths for file parts
-#     parts = []
-#     ep = AudioSegment.from_mp3(root/(name+'.mp3'))
-#     ep_size = len(ep)
-#     max_size = int(ep_size / ratio)
-#     idx_list = create_file_index_list(max_size, ep_size)
-    
-#     start = 0
-#     for i in range(len(idx_list)):
-#         end = idx_list[i]
-#         ep_part = ep[start:end]
-#         part_path = root/(name + f"_Part_{i+1}.mp3")
-#         ep_part.export(part_path, format='mp3')
-#         parts.append(part_path)
-#         start = end
-    
-#     return parts
-
-
 def truncate(s):
+    """
+    This is called when preparing an episode for display.
+    Since podcast and episode descriptions are sent as captions to the artwork,
+    their length is limited to 1000 chars.
+
+    This ensures that the provided string is shorter than 1000 chars by appropriately
+    truncating everything past that threshold.
+    """
     if len(s) < 1000:
         return s
     res = ''
@@ -274,8 +266,14 @@ def truncate(s):
 
 
 def clean_html(text):
-    text_new = re.sub(r'</?(p|h2|ul|br)>|</li>', '', text)
-    text_new = re.sub(r'<li>', '\n- ', text_new)
+    """
+    Telegram only accepts text emphasis and link tags, so this strips the provided text
+    of everything else, appropriately replacing some tags with others.
+    """
+    text_new = re.sub(r'</?(p|ul|br)>|</li>', '', text)
+    text_new = re.sub(r'<(h1|h2|h3)[^>]*>', '<b>', text_new)
+    text_new = re.sub(r'</(h1|h2|h3)>', '</b>', text_new)
+    text_new = re.sub(r'<li>', '- ', text_new)
     text_new = re.sub(r'&nbsp;', ' ', text_new)
     
     return text_new

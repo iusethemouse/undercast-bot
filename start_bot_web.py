@@ -1,4 +1,9 @@
-# Global imports
+"""
+start_bot_web.py
+
+Starts the bot process hosted on a remote server, after initialising and registering handlers.
+"""
+
 from telegram.ext import Updater, PicklePersistence
 import logging
 import os
@@ -6,11 +11,10 @@ import os
 # Local imports
 from modules.handlers import handlers
 from modules.generic_logic import error as error_handler
-from modules.entities import Pod, Episode
 
 # Globals
-BOT_TOKEN = "your bot token"
-HEROKU_APP = "your heroku app name"
+BOT_TOKEN = "your_bot_token"
+HEROKU_APP = "your_heroku_app_handle"
 
 
 def initialise(bot_token, persistence_pickle):
@@ -23,7 +27,7 @@ def initialise(bot_token, persistence_pickle):
 
 def add_handlers_to_dp(dp, handlers, error_handler):
     for h in handlers:
-        dp.add_handler(h)
+        dp.add_handler(handlers[h])
 
     dp.add_error_handler(error_handler)
 

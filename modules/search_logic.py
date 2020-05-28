@@ -1,236 +1,237 @@
-"""Logic for the search routine.
+"""
+search_logic.py
 
-The routine is initiated with the /search command. After that,
-all communication between functions is through callback queries
-from inline buttons.
-
-/search term -> search result list -> selected podcast <-> episode list <-> selected episode
-
-TODO: generalise some of the functions to work with other routines (i.e. subscriptions)
-
+Functions that handle the search routine and podcast/episode interface.
 """
 
-# Global imports
 import re
 import os
+from telegram.ext.dispatcher import run_async
 
 # Local imports
-import modules.tools as tools
-import modules.inline_keyboards as inline_keyboards
-from modules.action_wrappers import send_typing_action
+from . import tools
+from . import inline_keyboards
+from .entities import Episode
 
 def search(update, context):
     """
-    Initiates the routine.
-
-    User is sent a message with an inline button for each podcast in
-    the search result.
+    Any plaintext message is considered a search query.
     """
-
-    if len(context.args) == 0:
-        msg_header, msg_body = 'Usage: /search search-term', []
+    search_term = '+'.join(update.message.text.split(' '))
+    json = tools.get_search_json(search_term)
+    n = json['resultCount']
+    if n == 0:
+        update.message.reply_text("Couldn't find anything, try a different search term.")
     else:
-        search_term = '+'.join(context.args)
-        json = tools.get_search_json(search_term)
-        msg_list, keys, pod_list = tools.json_to_msg_keys_pod_list(json)
-        if keys != []:
-            msg_header, msg_body = msg_list[0], msg_list[1:]   
-            context.chat_data['pod_list'] = pod_list
-        else:
-            msg_header, msg_body = msg_list, []
-        
-        
-    update.message.reply_text(msg_header,
-                              reply_markup=inline_keyboards.search_results_keyboard(msg_body))
+        text = f"Found {n} result" + ("s:" if n > 1 else ":")
+        pods = tools.json_to_pods(json['results'])
+        keyboard = inline_keyboards.pod_list_keyboard(pods)
+        update.message.reply_text(text, reply_markup=keyboard)
+
+        # Store the podcast data for future reference.
+        for pod in pods:
+            if pod.pod_id not in context.bot_data:
+                context.bot_data[pod.pod_id] = {"podcast": pod, "episodes_raw": None, "episodes_processed": None}
 
 
-@send_typing_action
-def s_pod_button(update, context):
+def podcast_selection_callback(update, context):
     """
-    s_pod_button: Search Podcast Button
+    Called when a podcast is selected from any list (search results, subscriptions, etc.).
 
-    Sends the user an image message with the selected podcast information
-    as image caption, parsed as HTML.
-
-    Inline buttons include "Subscribe" and "Episodes"
-
+    Issues:
+    - the time it takes to download and parse the RSS feed for podcasts not already stored, ~2-3 seconds.
     """
-
     bot = context.bot
     query = update.callback_query
-    query.answer()
-    idx = int(re.search(r'[0-9]', query.data).group(0))
-    
-    pod = context.chat_data['pod_list'][idx]
+    query.answer("Loading podcast...")
 
-    # Check for file ID for podcast artwork image
-    if pod.collection_id in context.bot_data['podcasts']:
-        pod = context.bot_data['podcasts'][pod.collection_id]
-        img_f_id = pod.image_file_id
+    pod_id = query.data
+    pod = context.bot_data[pod_id]["podcast"]
+    if not context.bot_data[pod_id]["episodes_processed"]:
+        pod_data, episodes_data = tools.parse_feed(pod.feed_url)
+        context.bot_data[pod_id]["episodes_raw"] = episodes_data
+        pod.subtitle = tools.pod_subtitle_from_feed(pod_data)
+        image = tools.download_artwork(pod.image_url, pod.pod_id)
     else:
-        img_path = pod.get_image_path()
-        pod.get_eps_and_subs()
-    
-    # Loads podcast subtitle and processes all episodes
-    msg = pod.is_chosen()
+        image = pod.image_file_id
+
+    description = pod.generate_description()
+    keyboard = inline_keyboards.pod_view_keyboard(pod_id)
     
     m = bot.send_photo(chat_id=update.effective_chat.id,
-                   photo=open(img_path, 'rb') if not pod.image_file_id else img_f_id,
-                   caption=msg,
+                   photo=open(image, 'rb') if type(image) is not str else image,
+                   caption=description,
                    parse_mode='html',
-                   reply_markup=inline_keyboards.search_podcast_keyboard())
+                   reply_markup=keyboard)
     
     if not pod.image_file_id:
         pod.image_file_id = m.photo[0].file_id
-        context.bot_data['podcasts'][pod.collection_id] = pod
+        os.remove(image)
+        context.bot_data[pod_id]["podcast"] = pod
+
+
+def view_episodes_callback(update, context):
+    """
+    Displays a paginated list of episodes for selected podcast.
+
+    Issues: None.
+    """
+    query = update.callback_query
+    query.answer()
+
+    pod_id = re.search(r'[0-9]+', query.data).group(0)
+    pod = context.bot_data[pod_id]["podcast"]
+    if not context.bot_data[pod_id]["episodes_processed"]:
+        episodes = [Episode(ep) for ep in context.bot_data[pod_id]["episodes_raw"]]
+        context.bot_data[pod_id]["episodes_processed"] = episodes
+        context.bot_data[pod_id]["episodes_raw"] = None
+    else:
+        episodes = context.bot_data[pod_id]["episodes_processed"]
     
-    context.chat_data['s_p'] = pod
-    context.chat_data['s_p_idx'] = query.data
-
-
-def s_pod_eps_button(update, context):
+    keyboard_list = inline_keyboards.episodes_keyboard(episodes, pod_id)
+    page_index = 0
+    context.chat_data["episodes_keyboard_list"] = keyboard_list
+    context.chat_data["episodes_keyboard_page_index"] = page_index
+    keyboard = keyboard_list[page_index]
+    
+    query.edit_message_reply_markup(keyboard)
+    
+    
+def back_to_podcast_callback(update, context):
     """
-    s_pod_eps_button: Search Podcast Episodes Button
+    Returns from paginated episode list view back to podcast view.
 
-    Activated when user selects to view episodes of selected
-    podcast. Selected podcast message is edited to have the paginated
-    list of episodes as inline buttons.
+    Issues: None.
     """
+    query = update.callback_query
+    query.answer()
 
+    pod_id = re.search(r'[0-9]+', query.data).group(0)
+    keyboard = inline_keyboards.pod_view_keyboard(pod_id)
+    
+    query.edit_message_reply_markup(keyboard)
+    
+    
+def next_page_of_episodes_callback(update, context):
+    """
+    Flips the episode list to the next page.
+
+    Issues: None.
+    """
+    query = update.callback_query
+    query.answer()
+
+    keyboard_list = context.chat_data["episodes_keyboard_list"]
+    page_index = context.chat_data["episodes_keyboard_page_index"] + 1
+    keyboard = keyboard_list[page_index]
+    context.chat_data["episodes_keyboard_page_index"] = page_index
+    
+    query.edit_message_reply_markup(keyboard)
+    
+
+def prev_page_of_episodes_callback(update, context):
+    """
+    Flips the episode list to the previous page.
+
+    Issues: None.
+    """
     query = update.callback_query
     query.answer()
     
-    pod = context.chat_data['s_p']
-    s_p = context.chat_data['s_p_idx'] + '_r'
+    keyboard_list = context.chat_data["episodes_keyboard_list"]
+    page_index = context.chat_data["episodes_keyboard_page_index"] - 1
+    keyboard = keyboard_list[page_index]
+    context.chat_data["episodes_keyboard_page_index"] = page_index
     
-    eps = pod.episodes
-    k_list = inline_keyboards.search_episodes_keyboard(eps, s_p)
-    idx = 0
-    context.chat_data['s_p_e_k_list'] = k_list
-    context.chat_data['s_p_e_k_idx'] = idx
-    k = k_list[idx]
-    
-    query.edit_message_reply_markup(k)
-    
-    
-def s_eps_to_pod_button(update, context):
+    query.edit_message_reply_markup(keyboard)
+
+
+def last_page_of_episodes_callback(update, context):
     """
-    s_eps_to_pod_button: Search Episodes to Podcast Button
+    Flips the episode list to the last page.
 
-    Activated when the user chooses to return to the selected podcast
-    view from the episode list view.
-
-    The podcast message is edited to have the "Subscribe" and "Episodes" inline
-    buttons.
+    Issues: None.
     """
-
     query = update.callback_query
     query.answer()
     
-    query.edit_message_reply_markup(inline_keyboards.search_podcast_keyboard())
+    keyboard_list = context.chat_data["episodes_keyboard_list"]
+    page_index = -1
+    keyboard = keyboard_list[page_index]
+    context.chat_data["episodes_keyboard_page_index"] = page_index
     
-    
-def s_p_e_next_button(update, context):
-    """
-    s_p_e_next_button: Search Podcast Episode Next Button
+    query.edit_message_reply_markup(keyboard)
 
-    Activated when the user wants to go to the next page of the
-    episode list for selected podcast. The page number of the
-    episode list keyboard is incremented and the keyboard is regenerated.
-    """
 
+def first_page_of_episodes_callback(update, context):
+    """
+    Flips the episode list to the first page.
+
+    Issues: None.
+    """
     query = update.callback_query
     query.answer()
     
-    k_list = context.chat_data['s_p_e_k_list']
-    idx = context.chat_data['s_p_e_k_idx'] + 1
-    k = k_list[idx]
-    context.chat_data['s_p_e_k_idx'] = idx
+    keyboard_list = context.chat_data["episodes_keyboard_list"]
+    page_index = 0
+    keyboard = keyboard_list[page_index]
+    context.chat_data["episodes_keyboard_page_index"] = page_index
     
-    query.edit_message_reply_markup(k)
-    
+    query.edit_message_reply_markup(keyboard)
 
-def s_p_e_prev_button(update, context):
+
+def episode_selection_callback(update, context):
     """
-    s_p_e_prev_button: Search Podcast Episode Previous Button
+    Displays episode selected from the episode list.
 
-    Activated when the user wants to go to the previous page of the
-    episode list for selected podcast. The page number of the
-    episode list keyboard is decremented and the keyboard is regenerated.
+    Issues:
+    - Potential problems with parsing HTML of episode summaries.
     """
-
     query = update.callback_query
     query.answer()
     
-    k_list = context.chat_data['s_p_e_k_list']
-    idx = context.chat_data['s_p_e_k_idx'] - 1
-    k = k_list[idx]
-    context.chat_data['s_p_e_k_idx'] = idx
+    pod_id, ep_index = query.data.split("_")
+    pod = context.bot_data[pod_id]["podcast"]
+    episode = context.bot_data[pod_id]["episodes_processed"][int(ep_index)]
+    page_index = context.chat_data['episodes_keyboard_page_index']
     
-    query.edit_message_reply_markup(k)
+    description = f"<b>{pod.title}</b>\n{pod.artist}\n~\n{episode.is_chosen()}"
+    keyboard = inline_keyboards.episode_view_keyboard(ep_index, pod_id, page_index, episode.too_long)
+    
+    query.edit_message_caption(caption=description,
+                               parse_mode='html',
+                               reply_markup=keyboard)
+    
 
-    
-def s_pod_eps_ep_button(update, context):
+def view_shownotes_callback(update, context):
     """
-    s_pod_eps_ep_button: Search Podcast Episodes Episode Button
+    Sends a new message with episode show notes. This is required because of the 1000 character limit
+    on photo captions, which is what podcast and episode views use.
 
-    Activated when an episode is selected from the episode list for
-    selected podcast. The podcast message is edited to have a new
-    set of inline buttons: "Download", "Back to episode list", and,
-    optionally, "View show notes" if episode has them.
-
-    TODO: Certain show notes have a parsing problem with <img> and <br> tags.
+    Issues: None.
     """
-
-    query = update.callback_query
-    query.answer()
-    
-    ep_idx = int(re.search(r'[0-9]+', query.data).group(0))
-    pod = context.chat_data['s_p']
-    k_l_idx = context.chat_data['s_p_e_k_idx']
-    ep = pod.episodes[ep_idx]
-    
-    msg = f"<b>{pod.title}</b>\n{pod.artist}\n~\n{ep.is_chosen()}"
-    k = inline_keyboards.search_chosen_episode_keyboard(ep_idx, k_l_idx, ep.too_long)
-    
-    query.edit_message_caption(caption=msg,
-                              parse_mode='html',
-                              reply_markup=k)
-    
-
-def s_p_e_subt_button(update, context):
-    """
-    s_p_e_subt_button: Search Podcast Episode Subtitle Button
-
-    Activated when the "View show notes" button is actioned.
-    Sends a new message with full show notes parsed as HTML, as text messages
-    have no character limit as opposed to image caption (which the podcast message
-    utilises for displaying podcast and episode descriptions).
-    """
-
     bot = context.bot
     query = update.callback_query
     query.answer()
     
-    ep_idx = int(re.search(r'[0-9]+', query.data).group(0))
-    pod = context.chat_data['s_p']
-    ep = pod.episodes[ep_idx]
+    pod_id, ep_index = query.data.split("shownotes")
+    pod = context.bot_data[pod_id]["podcast"]
+    episode = context.bot_data[pod_id]["episodes_processed"][int(ep_index)]
     
-    msg = f"<b>{pod.title}</b>\n<i>{pod.artist}</i>\n~\n<b>{ep.title}</b>\n\n{ep.shownotes}"
+    text = f"<b>{pod.title}</b>\n<i>{pod.artist}</i>\n~\n<b>{episode.title}</b>\n\n{episode.shownotes}"
+    keyboard = inline_keyboards.hide_shownotes_keyboard()
     bot.send_message(chat_id=update.effective_chat.id,
-                         text=msg,
-                         parse_mode='html',
-                         reply_markup=inline_keyboards.hide_shownotes_keyboard())
+                    text=text,
+                    parse_mode='html',
+                    reply_markup=keyboard)
+
     
-
-def s_p_e_hide_sub_button(update, context):
+def hide_shownotes_callback(update, context):
     """
-    s_p_e_hide_sub_button: Search Podcast Episode Hide Subtitle Button
+    Deletes the show notes message.
 
-    Activated when the user chooses to hide the show notes message.
-    The message is deleted.
+    Issues: None.
     """
-
     bot = context.bot
     query = update.callback_query
     query.answer()
@@ -239,78 +240,60 @@ def s_p_e_hide_sub_button(update, context):
                       message_id=query.message.message_id)
     
 
-def s_p_e_e_to_e_button(update, context):
+def return_to_episode_list_callback(update, context):
     """
-    s_p_e_e_to_e_button: Search Podcast Episodes Episode to Episodes Button
+    Returns back to the episode list view preserving the page position.
 
-    Activated when the user wants to return from the selected episode back to
-    the list of episodes. The page number is conserved.
+    Issues: None.
     """
-
+    # return from search episode view to eps list
     query = update.callback_query
     query.answer()
     
-    k_l_idx = int(re.search(r'[0-9]+', query.data).group(0))
-    pod = context.chat_data['s_p']
-    k = context.chat_data['s_p_e_k_list'][k_l_idx]
+    pod_id, page_index = query.data.split("return_to_episode_list")
+    pod = context.bot_data[pod_id]["podcast"]
+    text = pod.generate_description()
+    keyboard = context.chat_data["episodes_keyboard_list"][int(page_index)]
     
-    query.edit_message_caption(caption=pod.is_chosen(),
+    query.edit_message_caption(caption=text,
                               parse_mode='html',
-                              reply_markup=k)
+                              reply_markup=keyboard)
     
 
-def s_e_download_button(update, context):
+@run_async
+def download_episode_callback(update, context):
     """
-    s_e_download_button: Search Episode Download Button
+    Sends a new message with the audio file of the episode.
+    Always uses Telegram's fileID via start_file_uploader.php
 
-    Activated when the user wants to download the selected episode.
-
-    The file ID is sent if the episode has already been downloaded before by
-    any user, alternatively a request is sent to the secondary process, which uploads
-    the episode to Telegram's servers and returns its file ID to the primary process.
-
-    A message is then sent with the audio file (title: episode title, artist: podcast name)
-    with a short display message for context. The message is then shareable, the audio file
-    is downloadable.
-
-    TODO: Improve feedback to the user indicating what stage (downloading/uploading) the
-    process is currently at. Implement the process in an async way to remove the blocking
-    nature of the current implementation.
+    Issues:
+    - The process is blocked while the episode is being downloaded/uploaded,
+    preventing the bot from producing replies.
     """
-
     bot = context.bot
     query = update.callback_query
     query.answer()
     
-    note_msg = bot.send_message(chat_id=update.effective_chat.id,
-                   text='<i>Downloading episode, please wait…</i>',
-                   parse_mode='html')
+    notification_msg = bot.send_message(chat_id=update.effective_chat.id,
+                                        text='<i>Uploading episode, please wait…</i>',
+                                        parse_mode='html')
     
-    ep_idx = int(re.search(r'[0-9]+', query.data).group(0))
-    pod = context.chat_data['s_p']
-    ep = pod.episodes[ep_idx]
+    pod_id, ep_index = query.data.split("download")
+    pod = context.bot_data[pod_id]["podcast"]
+    ep = context.bot_data[pod_id]["episodes_processed"][int(ep_index)]
+
+    if not ep.file_id:
+        ep.file_id = ep.get_file_id(pod.title, pod.image_file_id)
+        context.bot_data[pod_id]["episodes_processed"][int(ep_index)] = ep
     
-    if ep.hash in context.bot_data['episodes']:
-        ep = context.bot_data['episodes'][ep.hash]
-        file_id = ep.file_id
-    else:
-        file_id = ep.get_file_id(pod.title, pod.image_file_id)
-        context.bot_data['episodes'][ep.hash] = ep
-        
-    bot.edit_message_text(chat_id=update.effective_chat.id,
-                      message_id=note_msg.message_id,
-                      text='<i>Uploading episode, please wait…</i>',
-                      parse_mode='html')
-    
-    msg = f"<b>{pod.title}</b>\n<i>{pod.artist}</i>\n~\n<b>{ep.title}</b>\n{ep.duration} <b>·</b> {ep.published_str}\n\nvia @undercast_bot"
+    text = f"<b>{pod.title}</b>\n<i>{pod.artist}</i>\n~\n<b>{ep.title}</b>\n{ep.duration} <b>·</b> {ep.published_str}\n\nvia @undercast_bot"
     bot.send_audio(chat_id=update.effective_chat.id,
-                    audio=file_id,
+                    audio=ep.file_id,
                     performer=pod.title,
                     title=ep.title,
-                    thumb=pod.image_file_id,
-                    caption=msg,
+                    caption=text,
                     parse_mode='html',
                     timeout=120)
             
     bot.delete_message(chat_id=update.effective_chat.id,
-                       message_id=note_msg.message_id)
+                       message_id=notification_msg.message_id)
