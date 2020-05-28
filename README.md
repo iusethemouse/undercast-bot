@@ -30,10 +30,10 @@ This will start the secondary process for acquiring episode file IDs. Upon reque
 
 
 # Changelog
-__v0.1.3__ - Added async functionality to the episode download process, which now allows the bot to continue being responsive while awaiting file IDs from the secondary process. Fixed the HTML parser for episode descriptions skipping tags that have additional attributes. Added documentation, improved naming, streamlined and generalised certain routines.
+__v0.2.1__ - Added async functionality to the episode download process, which now allows the bot to continue being responsive while awaiting file IDs from the secondary process. Fixed the HTML parser for episode descriptions skipping tags that have additional attributes. Added documentation, improved naming, streamlined and generalised certain routines.
 
-__v0.1.2__ - Added cloud-hosting functionality via webhooks. Implemented a workaround for Bot API's file size restriction using [MadelineProto](https://github.com/danog/MadelineProto). A secondary process now taps into Telegram API to upload files and provides their file ID to the primary process.
+__v0.2.0__ - Added cloud-hosting functionality via webhooks. Implemented a workaround for Bot API's file size restriction using [MadelineProto](https://github.com/danog/MadelineProto). A secondary process now taps into Telegram API to upload files and provides their file ID to the primary process.
 
-__v0.1.1__ - Initial release. Search is fully implemented. Files larger than 50MB are split into parts due to Telegram's Bot API restrictions.
+__v0.1.0__ - Initial release. Search is fully implemented. Files larger than 50MB are split into parts due to Telegram's Bot API restrictions.
 
 Made with [python-telegram-bot](https://github.com/python-telegram-bot/python-telegram-bot) and [MadelineProto](https://github.com/danog/MadelineProto).
