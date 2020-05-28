@@ -77,5 +77,5 @@ class Episode:
     
 
     def get_file_id(self, pod_title, thumb_id):
-        self.file_id = tools.download_ep(self.link, self.title, pod_title, thumb_id)
+        self.file_id = tools.download_ep(self.link, self.hash, self.title, pod_title, thumb_id)
         return self.file_id

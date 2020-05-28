@@ -195,17 +195,16 @@ def create_paginated_list(res_per_page, n_items):
     return res_list
 
 
-def download_ep(link, title, pod_title, thumb_id):
+def download_ep(link, ep_hash, title, pod_title, thumb_id):
     """
     Downloads the audio file, then waits for start_file_uploader.php to upload the file
     and provide its Telegram fileID. The fileID is returned.
     """ 
     root = EP_ROOT
     to_php = Path("episode_uploader/episodes_to_send/")
-    name = re.sub(r"\W", '_', title)
-    ext = name + '.mp3'
-    ext_txt = name + '.txt'
-    ext_data = name + '_data.txt'
+    ext = ep_hash + '.mp3'
+    ext_txt = ep_hash + '.txt'
+    ext_data = ep_hash + '_data.txt'
 
     if not root.exists():
         os.makedirs(root)

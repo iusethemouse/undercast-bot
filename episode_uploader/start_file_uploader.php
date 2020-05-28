@@ -16,8 +16,8 @@ $MadelineProto->start();
 while (TRUE) {
     $path = "episodes_to_send/*.mp3";
     $episodes_to_send = glob($path);
-    if (count($episodes_to_send) != 0) {
-        $episode = $episodes_to_send[0];
+    foreach ($episodes_to_send as $episode) {
+        // the '- 4' below is to remove the '.mp3' extension from the end of the path (sloppy)
         $episode_data = substr($episode, 0, strlen($episode) - 4) . "_data.txt";
         $episode_file_id_path = substr($episode, 0, strlen($episode) - 4) . ".txt";
 
@@ -51,33 +51,8 @@ while (TRUE) {
                 $method = $type;
             }
         }
-        $result['file_type'] = $method;
-        if ($result['file_type'] == 'photo') {
-            $result['file_size'] = $botAPI_file[$method][0]['file_size'];
-            if (isset($botAPI_file[$method][0]['file_name'])) {
-                $result['file_name'] = $botAPI_file[$method][0]['file_name'];
-                $result['file_id'] = $botAPI_file[$method][0]['file_id'];
-            }
-        } else {
-            if (isset($botAPI_file[$method]['file_name'])) {
-                $result['file_name'] = $botAPI_file[$method]['file_name'];
-            }
-            if (isset($botAPI_file[$method]['file_size'])) {
-                $result['file_size'] = $botAPI_file[$method]['file_size'];
-            }
-            if (isset($botAPI_file[$method]['mime_type'])) {
-                $result['mime_type'] = $botAPI_file[$method]['mime_type'];
-            }
-            $result['file_id'] = $botAPI_file[$method]['file_id'];
-        }
-        if (!isset($result['mime_type'])) {
-            $result['mime_type'] = 'application/octet-stream';
-        }
-        if (!isset($result['file_name'])) {
-            $result['file_name'] = $result['file_id'].($method === 'sticker' ? '.webp' : '');
-        }
-
-        $episode_file_id = $result['file_id'];
+        
+        $episode_file_id = $botAPI_file[$method]['file_id'];
 
         $fp = fopen($episode_file_id_path, "wb");
         fwrite($fp, $episode_file_id);
