@@ -140,6 +140,7 @@ class DB:
     def all_podcasts(self):
         command = "SELECT * FROM podcasts"
         try:
+            print("Getting all podcasts...")
             return [x for x in self.cursor.execute(command)]
         except StopIteration:
             print("Podcasts table is empty.\n")
