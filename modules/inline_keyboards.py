@@ -58,7 +58,7 @@ def episodes_keyboard(eps, pod_id):
         for ep_index in range(start, end):
             ep = eps[ep_index]
             keyboard.append([InlineKeyboardButton(f'{ep.title} | {ep.duration}',
-                            callback_data=f'{pod_id}_{ep_index}')])
+                            callback_data=f'{pod_id}_{ep.ep_id}')])
         # add prev, next, and back to podcast buttons to k
         if (page_index == 0) and (page_index != len(idx_list) - 1):
             keyboard.append([next_page, last_page])
@@ -74,13 +74,14 @@ def episodes_keyboard(eps, pod_id):
     return keyboards
 
 
-def episode_view_keyboard(episode_index, pod_id, page_index, too_long):
+def episode_view_keyboard(ep_id, pod_id, page_index, too_long):
     """
     Keyboard for individual episode view.
     """
-    keyboard = [[InlineKeyboardButton('View show notes', callback_data=f"{pod_id}shownotes{episode_index}")]] if too_long else []
+    too_long = bool(int(too_long)) # convert the potentially 0/1 value returned by the database
+    keyboard = [[InlineKeyboardButton('View show notes', callback_data=f"{pod_id}shownotes{ep_id}")]] if too_long else []
     
-    keyboard.append([InlineKeyboardButton('Download', callback_data=f"{pod_id}download{episode_index}")])
+    keyboard.append([InlineKeyboardButton('Download', callback_data=f"{pod_id}download{ep_id}")])
     keyboard.append([InlineKeyboardButton('Back to episode list', callback_data=f"{pod_id}return_to_episode_list{page_index}")])
         
     return InlineKeyboardMarkup(keyboard)

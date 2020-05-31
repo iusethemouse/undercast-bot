@@ -1,7 +1,7 @@
 """
 handlers.py
 
-This contains one dict with declarations of all handlers.
+The handlers dicionary can be imported from this module for access to the handler declarations.
 """
 
 from telegram.ext import (CommandHandler, 

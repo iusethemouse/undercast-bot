@@ -9,15 +9,17 @@ import re
 import feedparser
 from pathlib import Path
 import os
-from hashlib import md5
+from hashlib import sha256
 from datetime import datetime, timedelta
 from math import fabs
 import urllib.request
 import shutil
 import time
+import uuid
 
 # Local modules
 from .entities import Pod, Episode
+from .database import POD_COLUMNS, EP_COLUMNS
 
 # Globals
 IMG_ROOT = Path('artwork/')
@@ -79,7 +81,7 @@ def download_artwork(img_url, pod_id):
 
     The artwork file is then deleted by parent process to save space, while its fileID is stored.
     """
-    ext = pod_id + '.jpg'
+    ext = str(pod_id) + '.jpg'
     root = IMG_ROOT
     
     if not root.exists():
@@ -101,7 +103,7 @@ def parse_feed(feed_url):
     return feed_root['feed'], feed_root['entries']
 
 
-def pod_subtitle_from_feed(feed):
+def get_pod_subtitle_from_feed(feed):
     """
     Gets a podcast subtitle. It is preferable to use the 'subtitle' field if it exists.
     In some cases it exists but is set to the empty string, in which case 'summary' also works.
@@ -163,9 +165,9 @@ def get_ep_source_link(link_list):
 
 def hash_string(s):
     """
-    Returns a truncated MD5 hash of a string.
+    Returns a numeric sha256 hash of a string.
     """
-    return md5(s.encode('UTF-8')).hexdigest()[:10]
+    return int(sha256(s.encode('UTF-8')).hexdigest(), 16) % 10**12
 
 
 def process_ep_date(date_str):
@@ -195,16 +197,17 @@ def create_paginated_list(res_per_page, n_items):
     return res_list
 
 
-def download_ep(link, ep_hash, title, pod_title, thumb_id):
+def download_ep(link, ep_id, title, pod_title, thumb_id):
     """
     Downloads the audio file, then waits for start_file_uploader.php to upload the file
     and provide its Telegram fileID. The fileID is returned.
     """ 
     root = EP_ROOT
     to_php = Path("episode_uploader/episodes_to_send/")
-    ext = ep_hash + '.mp3'
-    ext_txt = ep_hash + '.txt'
-    ext_data = ep_hash + '_data.txt'
+    ep_id = str(ep_id)
+    ext = ep_id + '.mp3'
+    ext_txt = ep_id + '.txt'
+    ext_data = ep_id + '_data.txt'
 
     if not root.exists():
         os.makedirs(root)
@@ -269,10 +272,36 @@ def clean_html(text):
     Telegram only accepts text emphasis and link tags, so this strips the provided text
     of everything else, appropriately replacing some tags with others.
     """
-    text_new = re.sub(r'</?(p|ul|br)>|</li>', '', text)
-    text_new = re.sub(r'<(h1|h2|h3)[^>]*>', '<b>', text_new)
-    text_new = re.sub(r'</(h1|h2|h3)>', '</b>', text_new)
-    text_new = re.sub(r'<li>', '- ', text_new)
-    text_new = re.sub(r'&nbsp;', ' ', text_new)
+    text_clean = re.sub(r'</?(p|ul|br)>|</li>', '', text)
+    text_clean = re.sub(r'<(h1|h2|h3)[^>]*>', '<b>', text_clean)
+    text_clean = re.sub(r'</(h1|h2|h3)>', '</b>', text_clean)
+    text_clean = re.sub(r'<li>', '- ', text_clean)
+    text_clean = re.sub(r'&nbsp;', ' ', text_clean)
     
-    return text_new
+    return text_clean
+
+
+def convert_db_output_to_object(db_output, object_class):
+    """
+    A fetched row is a tuple of column values. This function converts it to a corresponding
+    object
+    """
+    keys = POD_COLUMNS if object_class == "Pod" else EP_COLUMNS
+    object_info = dict()
+    for i, key in enumerate(keys):
+        object_info[key] = db_output[i]
+
+    return Pod(object_info, new=False) if object_class == "Pod" else Episode(object_info, new=False)
+
+
+def convert_object_to_db_input(object):
+    """
+    The database expects a tuple of values corresponding to columns.
+    This function generates such tuple using the object's attributes based on the object's type.
+    """
+    columns = POD_COLUMNS if isinstance(object, Pod) else EP_COLUMNS
+    db_input = []
+    for col in columns:
+        db_input.append(getattr(object, col))
+    
+    return tuple(db_input)
