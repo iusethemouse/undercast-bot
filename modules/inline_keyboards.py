@@ -25,31 +25,35 @@ def pod_list_keyboard(pods: list):
     return InlineKeyboardMarkup(keyboard)
 
 
-def pod_view_keyboard(pod_id):
+def pod_view_keyboard(pod_id, user_id, is_subscribed):
     """
     Generates a keyboard for selected podcast view.
     """
-    keyboard = [
-        # [InlineKeyboardButton("Subscribe",
-        #                       callback_data=f"subscribe{pod_id}")],
-        [InlineKeyboardButton("Episodes",
-                              callback_data=f"episodes{pod_id}")]
-    ]
+    if is_subscribed:
+        keyboard = [
+            [InlineKeyboardButton("Unsubscribe", callback_data=f"{pod_id}unsubscribe{user_id}")]
+        ]
+    else:
+        keyboard = [
+            [InlineKeyboardButton("Subscribe", callback_data=f"{pod_id}subscribe{user_id}")]
+        ]
+    keyboard.append([InlineKeyboardButton("Episodes", callback_data=f"episodes{pod_id}")])
+    
     return InlineKeyboardMarkup(keyboard)
     
 
-def episodes_keyboard(eps, pod_id):
+def episodes_keyboard(eps, pod_id, user_id):
     """
     Returns a list of prepared keyboards for each page of episode list view.
     """
     max_eps_per_page = 6
     idx_list = create_paginated_list(max_eps_per_page, len(eps))
     keyboards= []
-    first_page = InlineKeyboardButton("<< First", callback_data="episodes_first_page")
-    last_page = InlineKeyboardButton("Last >>", callback_data="episodes_last_page")
-    prev_page = InlineKeyboardButton("< Prev", callback_data="episodes_prev_page")
-    next_page = InlineKeyboardButton("Next >", callback_data="episodes_next_page")
-    back_to_pod = InlineKeyboardButton("Back to podcast", callback_data=f"return{pod_id}")
+    first_page = InlineKeyboardButton("<< First", callback_data="eps_navigation_first")
+    last_page = InlineKeyboardButton("Last >>", callback_data="eps_navigation_last")
+    prev_page = InlineKeyboardButton("< Prev", callback_data="eps_navigation_prev")
+    next_page = InlineKeyboardButton("Next >", callback_data="eps_navigation_next")
+    back_to_pod = InlineKeyboardButton("Back to podcast", callback_data=f"{pod_id}return{user_id}")
     
     start = 0
     for page_index in range(len(idx_list)):
@@ -67,6 +71,40 @@ def episodes_keyboard(eps, pod_id):
         elif page_index != 0:
             keyboard.append([first_page, prev_page, next_page, last_page])
         keyboard.append([back_to_pod])
+        start = end
+            
+        keyboards.append(InlineKeyboardMarkup(keyboard))
+
+    return keyboards
+
+
+def subscriptions_keyboard(pods):
+    """
+    Returns a list of prepared keyboards for each page of subscription list view.
+    """
+    max_pods_per_page = 7
+    idx_list = create_paginated_list(max_pods_per_page, len(pods))
+    keyboards= []
+    first_page = InlineKeyboardButton("<< First", callback_data="subs_navigation_first")
+    last_page = InlineKeyboardButton("Last >>", callback_data="subs_navigation_last")
+    prev_page = InlineKeyboardButton("< Prev", callback_data="subs_navigation_prev")
+    next_page = InlineKeyboardButton("Next >", callback_data="subs_navigation_next")
+    
+    start = 0
+    for page_index in range(len(idx_list)):
+        keyboard = []
+        end = idx_list[page_index]
+        for pod_index in range(start, end):
+            pod = pods[pod_index]
+            keyboard.append([InlineKeyboardButton(f"{pod.title} | {pod.artist}",
+                            callback_data=pod.pod_id)])
+        # add navigation buttons to keyboard
+        if (page_index == 0) and (page_index != len(idx_list) - 1):
+            keyboard.append([next_page, last_page])
+        elif (page_index == len(idx_list) - 1) and (page_index != 0):
+            keyboard.append([first_page, prev_page])
+        elif page_index != 0:
+            keyboard.append([first_page, prev_page, next_page, last_page])
         start = end
             
         keyboards.append(InlineKeyboardMarkup(keyboard))

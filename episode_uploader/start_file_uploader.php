@@ -1,5 +1,12 @@
 <?php
 
+// start_file_uploader.php
+
+// This secondary process uses Telegram API and MadelineProto to upload audio files to Telegram's servers
+// and provides their file ID to the primary process. File IDs are permanent and can be reused indefinitely
+// to send files without having to upload them again.
+
+
 if (!file_exists('madeline.php')) {
     copy('https://phar.madelineproto.xyz/madeline.php', 'madeline.php');
 }

@@ -36,8 +36,36 @@ def search(update, context):
             if not db.get_podcast(pod.pod_id):
                 pod_data = tools.convert_object_to_db_input(pod)
                 db.add_podcast(pod_data)
-            else:
-                print(f"{pod.title} already in podcast table.")
+
+
+def subscriptions(update, context):
+    """
+    Invoked when the /subscriptions command is received.
+    Displays a paginated list of podcasts that effective user is subscribed to.
+    """
+    bot = context.bot
+    user_id = update.effective_user.id
+
+    subs = db.get_all_subscriptions(user_id) # either None or a list of pod_id tuples (pod_id,)
+    if not subs:
+        update.message.reply_text(
+            """You aren't subscribed to any podcasts. Use the "Subscribe" button when viewing a podcast to add it to this list."""
+        )
+    else:
+        pods = []
+        for pod_id in subs:
+            pod_id = pod_id[0]
+            pod = tools.convert_db_output_to_object(db.get_podcast(pod_id), "Pod")
+            pods.append(pod)
+    
+        keyboard_list = inline_keyboards.subscriptions_keyboard(pods)
+
+        page_index = 0
+        context.chat_data["subscriptions_keyboard_list"] = keyboard_list
+        context.chat_data["subscriptions_keyboard_list_page_index"] = page_index
+        keyboard = keyboard_list[page_index]
+
+        update.message.reply_text("Your subscriptions:", reply_markup=keyboard)
 
 
 def podcast_selection_callback(update, context):
@@ -66,7 +94,8 @@ def podcast_selection_callback(update, context):
         image = pod.image_file_id
 
     description = pod.generate_description()
-    keyboard = inline_keyboards.pod_view_keyboard(pod.pod_id)
+    user_id = update.effective_user.id
+    keyboard = inline_keyboards.pod_view_keyboard(pod.pod_id, user_id, db.is_subscribed_to(user_id, pod.pod_id))
     
     m = bot.send_photo(chat_id=update.effective_chat.id,
                    photo=open(image, 'rb') if type(image) is not str else image,
@@ -86,6 +115,42 @@ def podcast_selection_callback(update, context):
         os.remove(image)
 
 
+def subscribe_callback(update, context):
+    """
+    Adds selected podcast to the subscriptions table for effective user.
+
+    Issues: Need to add a proper latest_release field to the podcasts table.
+    """
+    query = update.callback_query
+    query.answer("Subscribed")
+
+    pod_id, user_id = query.data.split("subscribe")
+    pod = tools.convert_db_output_to_object(db.get_podcast(pod_id), "Pod")
+    latest_release = pod.latest_release
+
+    db.subscribe_user_to_podcast(user_id, pod_id, latest_release)
+    keyboard = inline_keyboards.pod_view_keyboard(pod_id, user_id, is_subscribed=True)
+    
+    query.edit_message_reply_markup(keyboard)
+
+
+def unsubscribe_callback(update, context):
+    """
+    Removes selected podcast from the subscriptions table for effective user.
+
+    Issues: None.
+    """
+    query = update.callback_query
+    query.answer("Unsubscribed")
+
+    pod_id, user_id = query.data.split("unsubscribe")
+
+    db.unsubscribe_user_from_podcast(user_id, pod_id)
+    keyboard = inline_keyboards.pod_view_keyboard(pod_id, user_id, is_subscribed=False)
+    
+    query.edit_message_reply_markup(keyboard)
+
+
 def view_episodes_callback(update, context):
     """
     Displays a paginated list of episodes for selected podcast.
@@ -96,12 +161,13 @@ def view_episodes_callback(update, context):
     query.answer()
 
     pod_id = re.search(r'[0-9]+', query.data).group(0)
+    user_id = update.effective_user.id
     pod = tools.convert_db_output_to_object(db.get_podcast(pod_id), "Pod")
 
     episodes_raw = db.get_all_episodes(pod.pod_id)
     episodes = [tools.convert_db_output_to_object(ep, "Episode") for ep in episodes_raw] # a list of Episode objects
     
-    keyboard_list = inline_keyboards.episodes_keyboard(episodes, pod.pod_id)
+    keyboard_list = inline_keyboards.episodes_keyboard(episodes, pod.pod_id, user_id)
 
     page_index = 0
     context.chat_data["episodes_keyboard_list"] = keyboard_list
@@ -120,78 +186,78 @@ def back_to_podcast_callback(update, context):
     query = update.callback_query
     query.answer()
 
-    pod_id = re.search(r'[0-9]+', query.data).group(0)
-    keyboard = inline_keyboards.pod_view_keyboard(pod_id)
+    pod_id, user_id = query.data.split("return")
+    keyboard = inline_keyboards.pod_view_keyboard(pod_id, user_id, db.is_subscribed_to(user_id, pod_id))
     
     query.edit_message_reply_markup(keyboard)
     
     
-def next_page_of_episodes_callback(update, context):
-    """
-    Flips the episode list to the next page.
+# def next_page_of_episodes_callback(update, context):
+#     """
+#     Flips the episode list to the next page.
 
-    Issues: None.
-    """
-    query = update.callback_query
-    query.answer()
+#     Issues: None.
+#     """
+#     query = update.callback_query
+#     query.answer()
 
-    keyboard_list = context.chat_data["episodes_keyboard_list"]
-    page_index = context.chat_data["episodes_keyboard_list_page_index"] + 1
-    keyboard = keyboard_list[page_index]
-    context.chat_data["episodes_keyboard_list_page_index"] = page_index
+#     keyboard_list = context.chat_data["episodes_keyboard_list"]
+#     page_index = context.chat_data["episodes_keyboard_list_page_index"] + 1
+#     keyboard = keyboard_list[page_index]
+#     context.chat_data["episodes_keyboard_list_page_index"] = page_index
     
-    query.edit_message_reply_markup(keyboard)
+#     query.edit_message_reply_markup(keyboard)
     
 
-def prev_page_of_episodes_callback(update, context):
-    """
-    Flips the episode list to the previous page.
+# def prev_page_of_episodes_callback(update, context):
+#     """
+#     Flips the episode list to the previous page.
 
-    Issues: None.
-    """
-    query = update.callback_query
-    query.answer()
+#     Issues: None.
+#     """
+#     query = update.callback_query
+#     query.answer()
     
-    keyboard_list = context.chat_data["episodes_keyboard_list"]
-    page_index = context.chat_data["episodes_keyboard_list_page_index"] - 1
-    keyboard = keyboard_list[page_index]
-    context.chat_data["episodes_keyboard_list_page_index"] = page_index
+#     keyboard_list = context.chat_data["episodes_keyboard_list"]
+#     page_index = context.chat_data["episodes_keyboard_list_page_index"] - 1
+#     keyboard = keyboard_list[page_index]
+#     context.chat_data["episodes_keyboard_list_page_index"] = page_index
     
-    query.edit_message_reply_markup(keyboard)
+#     query.edit_message_reply_markup(keyboard)
 
 
-def last_page_of_episodes_callback(update, context):
-    """
-    Flips the episode list to the last page.
+# def last_page_of_episodes_callback(update, context):
+#     """
+#     Flips the episode list to the last page.
 
-    Issues: None.
-    """
-    query = update.callback_query
-    query.answer()
+#     Issues: None.
+#     """
+#     query = update.callback_query
+#     query.answer()
     
-    keyboard_list = context.chat_data["episodes_keyboard_list"]
-    page_index = len(keyboard_list) - 1
-    keyboard = keyboard_list[page_index]
-    context.chat_data["episodes_keyboard_list_page_index"] = page_index
+#     keyboard_list = context.chat_data["episodes_keyboard_list"]
+#     page_index = len(keyboard_list) - 1
+#     keyboard = keyboard_list[page_index]
+#     context.chat_data["episodes_keyboard_list_page_index"] = page_index
     
-    query.edit_message_reply_markup(keyboard)
+#     query.edit_message_reply_markup(keyboard)
 
 
-def first_page_of_episodes_callback(update, context):
-    """
-    Flips the episode list to the first page.
+# def first_page_of_episodes_callback(update, context):
+#     """
+#     Flips the episode list to the first page.
 
-    Issues: None.
-    """
-    query = update.callback_query
-    query.answer()
+#     Issues: None.
+#     """
+#     query = update.callback_query
+#     query.answer()
     
-    keyboard_list = context.chat_data["episodes_keyboard_list"]
-    page_index = 0
-    keyboard = keyboard_list[page_index]
-    context.chat_data["episodes_keyboard_list_page_index"] = page_index
+#     keyboard_list = context.chat_data["episodes_keyboard_list"]
+#     page_index = 0
+#     keyboard = keyboard_list[page_index]
+#     context.chat_data["episodes_keyboard_list_page_index"] = page_index
     
-    query.edit_message_reply_markup(keyboard)
+#     query.edit_message_reply_markup(keyboard)
 
 
 def episode_selection_callback(update, context):
@@ -279,6 +345,60 @@ def return_to_episode_list_callback(update, context):
     query.edit_message_caption(caption=text,
                               parse_mode='html',
                               reply_markup=keyboard)
+
+
+def episodes_navigation_callback(update, context):
+    """
+    Changes the current page of the episodes list based on the query:
+    Next, Prev, First, or Last page.
+    """
+    query = update.callback_query
+    query.answer()
+
+    request = query.data.split("_")[-1]
+    keyboard_list = context.chat_data["episodes_keyboard_list"]
+    page_index = context.chat_data["episodes_keyboard_list_page_index"]
+
+    if request == "next":
+        page_index += 1
+    elif request == "prev":
+        page_index -= 1
+    elif request == "first":
+        page_index = 0
+    else:
+        page_index = len(keyboard_list) - 1
+
+    context.chat_data["episodes_keyboard_list_page_index"] = page_index
+    keyboard = keyboard_list[page_index]
+    
+    query.edit_message_reply_markup(keyboard)
+
+
+def subscriptions_navigation_callback(update, context):
+    """
+    Changes the current page of the subscriptions list based on the query:
+    Next, Prev, First, or Last page.
+    """
+    query = update.callback_query
+    query.answer()
+
+    request = query.data.split("_")[-1]
+    keyboard_list = context.chat_data["subscriptions_keyboard_list"]
+    page_index = context.chat_data["subscriptions_keyboard_list_page_index"]
+
+    if request == "next":
+        page_index += 1
+    elif request == "prev":
+        page_index -= 1
+    elif request == "first":
+        page_index = 0
+    else:
+        page_index = len(keyboard_list) - 1
+
+    context.chat_data["subscriptions_keyboard_list_page_index"] = page_index
+    keyboard = keyboard_list[page_index]
+    
+    query.edit_message_reply_markup(keyboard)
     
 
 @run_async

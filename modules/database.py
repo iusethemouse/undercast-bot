@@ -43,7 +43,8 @@ class DB:
 
 
     def initialise(self):
-        podcasts = """CREATE TABLE IF NOT EXISTS podcasts
+        tables = {
+            "podcasts": """CREATE TABLE IF NOT EXISTS podcasts
                     (pod_id INTEGER PRIMARY KEY,
                     title TEXT,
                     artist TEXT,
@@ -52,10 +53,9 @@ class DB:
                     image_url TEXT,
                     image_file_id TEXT,
                     latest_release TEXT,
-                    episode_count TEXT)"""
-        self.cursor.execute(podcasts)
+                    episode_count TEXT)""",
 
-        episodes = """CREATE TABLE IF NOT EXISTS episodes
+            "episodes": """CREATE TABLE IF NOT EXISTS episodes
                     (ep_id INTEGER PRIMARY KEY,
                     pod_id INTEGER,
                     title TEXT,
@@ -67,26 +67,41 @@ class DB:
                     file_id TEXT,
                     shownotes TEXT,
                     too_long TEXT,
-                    FOREIGN KEY(pod_id) REFERENCES podcasts(pod_id))"""
-        self.cursor.execute(episodes)
+                    FOREIGN KEY(pod_id) REFERENCES podcasts(pod_id))""",
+
+            "users": """CREATE TABLE IF NOT EXISTS users
+                    (user_id INTEGER PRIMARY KEY)""",
+
+            "subscriptions": """CREATE TABLE IF NOT EXISTS subscriptions
+                            (user_id INTEGER,
+                            pod_id INTEGER,
+                            latest_release TEXT,
+                            FOREIGN KEY(user_id) REFERENCES users(user_id),
+                            FOREIGN KEY(pod_id) REFERENCES podcasts(pod_id))"""
+        }
+
+        for table in tables:
+            self.cursor.execute(tables[table])
 
         self.connection.commit()
+        print("INITIAL SETUP: done.")
 
 
     def add_podcast(self, pod_data: tuple):
         command = "INSERT INTO podcasts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
         self.cursor.execute(command, pod_data)
         self.connection.commit()
-        print(f"Added {pod_data[1]} to podcasts table!\n")
+        print(f"ADDED PODCAST: added {pod_data[1]}.")
 
 
     def get_podcast(self, pod_id: str):
         args = (int(pod_id),)
         command = "SELECT * FROM podcasts WHERE pod_id = ?"
         try:
+            print(f"LOOKING FOR PODCAST: {pod_id}.")
             return next(self.cursor.execute(command, args))
         except StopIteration:
-            print(f"Podcast {pod_id} not in database.\n")
+            print(f"PODCAST NOT FOUND: {pod_id} not in database.")
             return None
 
 
@@ -94,8 +109,10 @@ class DB:
         args = (int(pod_id),)
         command = "SELECT 1 FROM episodes WHERE pod_id = ?"
         try:
+            print(f"CHECKING STORED EPISODES: {pod_id}.")
             return next(self.cursor.execute(command, args))
         except StopIteration:
+            print(f"NO EPISODES STORED: {pod_id}.")
             return None
 
 
@@ -103,17 +120,17 @@ class DB:
         command = "INSERT INTO episodes VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         self.cursor.execute(command, ep_data)
         self.connection.commit()
-        print(f"Added episode {ep_data[2]} to episodes table!\n")
+        print(f"ADDED EPISODE: {ep_data[2]}.")
 
 
     def get_episode(self, ep_id: str):
         args = (int(ep_id),)
         command = "SELECT * FROM episodes WHERE ep_id = ?"
         try:
-            print(f"Getting episode with ID {ep_id}...\n")
+            print(f"LOOKING FOR EPISODE: {ep_id}.")
             return next(self.cursor.execute(command, args))
         except StopIteration:
-            print(f"Episode {ep_id} not in database.\n")
+            print(f"EPISODE NOT FOUND: {ep_id} not in database.")
             return None
 
 
@@ -134,27 +151,69 @@ class DB:
 
         self.cursor.execute(command, tuple(args))
         self.connection.commit()
-        print(f"Successfully updated item {item_id} in {table_name}.")
+        print(f"UPDATED TABLE {table_name.upper()}: item {item_id}.")
 
 
-    def all_podcasts(self):
+    def get_all_podcasts(self):
         command = "SELECT * FROM podcasts"
         try:
-            print("Getting all podcasts...")
+            print("GETTING ALL PODCASTS.")
             return [x for x in self.cursor.execute(command)]
         except StopIteration:
-            print("Podcasts table is empty.\n")
+            print("NO PODCASTS STORED.")
             return None
 
 
     def get_all_episodes(self, pod_id):
         command = "SELECT * FROM episodes WHERE pod_id = ?"
-        args = (pod_id,)
+        args = (int(pod_id),)
         try:
-            print(f"Getting all episodes for podcast {pod_id}...\n")
+            print(f"GETTING ALL EPISODES: for podcast {pod_id}.")
             return [x for x in self.cursor.execute(command, args)]
         except StopIteration:
-            print(f"Found no episodes for podcast {pod_id}.\n")
+            print(f"NO EPISODES STORED: for podcast {pod_id}.")
+            return None
+
+
+    def is_subscribed_to(self, user_id, pod_id):
+        args = (int(user_id), int(pod_id),)
+        command = "SELECT 1 FROM subscriptions WHERE user_id = ? AND pod_id = ?"
+        try:
+            print(f"CHECKING SUBSCRIPTION: user {user_id}, podcast {pod_id}.")
+            _ = next(self.cursor.execute(command, args))
+            return True
+        except StopIteration:
+            print(f"NOT SUBSCRIBED: user {user_id}, podcast {pod_id}.")
+            return False
+
+
+    def subscribe_user_to_podcast(self, user_id, pod_id, latest_release):
+        args = (int(user_id), int(pod_id), latest_release,)
+        command = "INSERT INTO subscriptions VALUES (?, ?, ?)"
+
+        self.cursor.execute(command, args)
+        self.connection.commit()
+        print(f"USER SUBSCRIBED TO PODCAST: user {user_id}, podcast {pod_id}.")
+
+
+    def unsubscribe_user_from_podcast(self, user_id, pod_id):
+        args = (int(user_id), int(pod_id),)
+        command = "DELETE FROM subscriptions WHERE user_id = ? AND pod_id = ?"
+
+        self.cursor.execute(command, args)
+        self.connection.commit()
+        print(f"USER UNSUBSCRIBED FROM PODCAST: user {user_id}, podcast {pod_id}.")
+
+
+    def get_all_subscriptions(self, user_id):
+        args = (int(user_id),)
+        command = "SELECT pod_id FROM subscriptions WHERE user_id = ?"
+
+        try:
+            print(f"GETTING SUBSCRIPTIONS FOR USER: {user_id}.")
+            return [x for x in self.cursor.execute(command, args)]
+        except StopIteration:
+            print(f"NO SUBSCRIPTIONS FOR USER: {user_id}.")
             return None
 
 

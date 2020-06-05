@@ -24,7 +24,7 @@ from .database import POD_COLUMNS, EP_COLUMNS
 # Globals
 IMG_ROOT = Path('artwork/')
 EP_ROOT = Path('episodes/')
-MAX_SEARCH_RESULTS = 8
+MAX_SEARCH_RESULTS = 6
 
 
 def get_search_json(search_term: str):
@@ -161,6 +161,13 @@ def get_ep_source_link(link_list):
     for link_dict in link_list:
         if '.mp3' in link_dict['href']:
             return link_dict['href']
+
+
+def generate_uuid():
+    """
+    Returns a 5-digit randomly generated int.
+    """
+    return str(uuid.uuid4().int)[:5]
 
 
 def hash_string(s):

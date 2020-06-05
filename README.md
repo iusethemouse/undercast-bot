@@ -1,15 +1,18 @@
 # Undercast - A Telegram bot for podcasts
+
 [@undercast_bot](https://t.me/undercast_bot)
 
 A minimalist bot that makes it easy to:
+
 - Search for podcasts using any related term: podcast name, artist, topic, genre.
 - Download episodes, which you can then listen to using Telegram's in-app player.
 - Share favourite podcasts and episodes with anyone - they are just Telegram messages.
 
-## Planned features
+## Why use Undercast
 
-- Subscriptions
-- Notifications
+- __Access from any device with a Telegram client__: download an episode while on your desktop, listen to it on your phone while on the go.
+- __It's all messages__: liked an episode? Want to keep track of that link in the show notes? Just forward Undercast messages to your Saved Messages and they will be there for when you need them.
+- __Manage storage and mobile data use__: episodes can be streamed, downloaded, and easily deleted to reclaim storage.
 
 ## How to run locally
 
@@ -34,6 +37,8 @@ $ php episode_uploader/start_file_uploader.php
 This will start the secondary process for acquiring episode file IDs. Upon request, specify that you want to login as a bot, and specify your bot token. After the initial launch, a `.session` file will be generated with the entered parameters, and consequent launches won't require any additional input.
 
 ## Changelog
+
+__v0.4.0__ - Added subscriptions.
 
 __v0.3.0__ - Storage is now implemented using an SQLite database, which replaces the [pickle-based persistence solution](https://github.com/python-telegram-bot/python-telegram-bot/wiki/Storing-bot%2C-user-and-chat-related-data) provided by the python-telegram-bot wrapper.
 
