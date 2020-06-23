@@ -14,6 +14,10 @@ A minimalist bot that makes it easy to:
 - __It's all messages__: liked an episode? Want to keep track of that link in the show notes? Just forward Undercast messages to your Saved Messages and they will be there for when you need them.
 - __Manage storage and mobile data use__: episodes can be streamed, downloaded, and easily deleted to reclaim storage.
 
+## Preview
+
+![Screenshots](https://i.imgur.com/fTEoYgT.jpg)
+
 ## How to run locally
 
 Make sure you have a bot token from [@BotFather](https://t.me/BotFather), and Telegram API from [my.telegram.org](https://my.telegram.org/). See [here](https://docs.madelineproto.xyz/docs/LOGIN.html#getting-permission-to-use-the-telegram-api) for help with Telegram API.
