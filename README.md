@@ -16,7 +16,7 @@ A minimalist bot that makes it easy to:
 
 ## Preview
 
-![Screenshots](https://i.imgur.com/NnHY4om.png)
+![Screenshots](https://i.imgur.com/SXEa3XI.jpg)
 
 ## How to run locally
 
