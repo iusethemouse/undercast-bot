@@ -2,7 +2,7 @@
 
 [@undercast_bot](https://t.me/undercast_bot)
 
-**Active development has been paused with a planned transition to the [Pyrogram](https://docs.pyrogram.org/) framework in the future.**
+> **Active development has been paused with a planned transition to the [Pyrogram](https://docs.pyrogram.org/) framework in the future.**
 
 A minimalist bot that makes it easy to:
 
