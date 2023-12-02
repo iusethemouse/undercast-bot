@@ -13,7 +13,7 @@ from modules.handlers import handlers
 from modules.generic_logic import error as error_handler
 
 # Globals
-BOT_TOKEN = "your_bot_token"
+BOT_TOKEN = "your_bot_token_here"
 
 
 def initialise(bot_token, persistence_pickle):
