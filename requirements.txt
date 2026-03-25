@@ -14,7 +14,7 @@ pycparser==2.20
 pydub==0.23.1
 pylint==2.5.0
 python-telegram-bot==12.7
-requests==2.23.0
+requests==2.33.0
 six==1.14.0
 toml==0.10.0
 tornado==6.0.4
